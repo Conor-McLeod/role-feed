@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "role-feed",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-30",
+
+  // Static feed UI. API routes go to the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // database_id is filled in automatically on first deploy.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "role-feed",
+      "migrations_dir": "./migrations"
+    }
+  ],
+
+  // One message per company, consumed one at a time, so each company's
+  // fetch + parse gets its own invocation (and its own CPU budget).
+  "queues": {
+    "producers": [{ "binding": "FETCH_QUEUE", "queue": "role-feed-fetch" }],
+    "consumers": [
+      {
+        "queue": "role-feed-fetch",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      }
+    ]
+  },
+
+  // Once a day, 12:00 UTC.
+  "triggers": {
+    "crons": ["0 12 * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

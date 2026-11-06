@@ -1,0 +1,386 @@
+[
+  {
+    "category": "inference-platform",
+    "name": "Baseten",
+    "ats": "ashby",
+    "slug": "baseten"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Modal",
+    "ats": "ashby",
+    "slug": "modal"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Fireworks AI",
+    "ats": "ashby",
+    "slug": "fireworks"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Together AI",
+    "ats": "greenhouse",
+    "slug": "togetherai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Groq",
+    "ats": "gem",
+    "slug": "groq"
+  },
+  {
+    "category": "inference-platform",
+    "name": "DeepInfra",
+    "ats": "gem",
+    "slug": "deep-infra"
+  },
+  {
+    "category": "inference-platform",
+    "name": "fal",
+    "ats": "ashby",
+    "slug": "fal-ai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Anyscale",
+    "ats": "ashby",
+    "slug": "anyscale"
+  },
+  {
+    "category": "inference-platform",
+    "name": "OpenRouter",
+    "ats": "ashby",
+    "slug": "openrouter"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Hyperbolic",
+    "ats": "ashby",
+    "slug": "hyperbolic"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Novita AI",
+    "ats": "ashby",
+    "slug": "novita-ai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Featherless AI",
+    "ats": "ashby",
+    "slug": "featherlessai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Parasail",
+    "ats": "ashby",
+    "slug": "parasail"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Inference.net",
+    "ats": "ashby",
+    "slug": "inference"
+  },
+  {
+    "category": "inference-platform",
+    "name": "FriendliAI",
+    "ats": "ashby",
+    "slug": "friendliai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Lightning AI",
+    "ats": "greenhouse",
+    "slug": "lightningai"
+  },
+  {
+    "category": "inference-platform",
+    "name": "Ollama",
+    "ats": "ashby",
+    "slug": "ollama"
+  },
+  {
+    "category": "neocloud",
+    "name": "CoreWeave",
+    "ats": "greenhouse",
+    "slug": "coreweave"
+  },
+  {
+    "category": "neocloud",
+    "name": "Lambda",
+    "ats": "ashby",
+    "slug": "lambda"
+  },
+  {
+    "category": "neocloud",
+    "name": "Crusoe",
+    "ats": "ashby",
+    "slug": "crusoe"
+  },
+  {
+    "category": "neocloud",
+    "name": "Nebius",
+    "ats": "greenhouse",
+    "slug": "nebius"
+  },
+  {
+    "category": "neocloud",
+    "name": "Fluidstack",
+    "ats": "ashby",
+    "slug": "fluidstack"
+  },
+  {
+    "category": "neocloud",
+    "name": "Vast.ai",
+    "ats": "ashby",
+    "slug": "vastai"
+  },
+  {
+    "category": "neocloud",
+    "name": "Runpod",
+    "ats": "ashby",
+    "slug": "runpod"
+  },
+  {
+    "category": "neocloud",
+    "name": "TensorWave",
+    "ats": "ashby",
+    "slug": "tensorwave"
+  },
+  {
+    "category": "neocloud",
+    "name": "SF Compute",
+    "ats": "ashby",
+    "slug": "sfcompute"
+  },
+  {
+    "category": "neocloud",
+    "name": "Prime Intellect",
+    "ats": "ashby",
+    "slug": "primeintellect"
+  },
+  {
+    "category": "neocloud",
+    "name": "Mithril",
+    "ats": "greenhouse",
+    "slug": "mithril"
+  },
+  {
+    "category": "neocloud",
+    "name": "Verda",
+    "ats": "ashby",
+    "slug": "verda"
+  },
+  {
+    "category": "neocloud",
+    "name": "Vultr",
+    "ats": "ashby",
+    "slug": "vultr"
+  },
+  {
+    "category": "neocloud",
+    "name": "Firmus",
+    "ats": "greenhouse",
+    "slug": "firmus"
+  },
+  {
+    "category": "neocloud",
+    "name": "Hyperstack (NexGen Cloud)",
+    "ats": "greenhouse",
+    "slug": "nexgencloud"
+  },
+  {
+    "category": "neocloud",
+    "name": "Massed Compute",
+    "ats": "ashby",
+    "slug": "massedcompute"
+  },
+  {
+    "category": "neocloud",
+    "name": "Shadeform",
+    "ats": "ashby",
+    "slug": "shadeform"
+  },
+  {
+    "category": "neocloud",
+    "name": "Andromeda",
+    "ats": "ashby",
+    "slug": "andromeda"
+  },
+  {
+    "category": "neocloud",
+    "name": "Thunder Compute",
+    "ats": "ashby",
+    "slug": "thundercompute"
+  },
+  {
+    "category": "neocloud",
+    "name": "Gimlet Labs",
+    "ats": "ashby",
+    "slug": "gimlet"
+  },
+  {
+    "category": "neocloud",
+    "name": "Fly.io",
+    "ats": "lever",
+    "slug": "fly"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Cerebras",
+    "ats": "ashby",
+    "slug": "cerebras"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Etched",
+    "ats": "ashby",
+    "slug": "etched"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "MatX",
+    "ats": "ashby",
+    "slug": "matx"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "d-Matrix",
+    "ats": "ashby",
+    "slug": "d-matrix"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Fractile",
+    "ats": "ashby",
+    "slug": "fractile"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "SambaNova",
+    "ats": "greenhouse",
+    "slug": "sambanovasystems"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Tenstorrent",
+    "ats": "greenhouse",
+    "slug": "tenstorrent"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "FuriosaAI",
+    "ats": "greenhouse",
+    "slug": "furiosaai"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Tensordyne",
+    "ats": "greenhouse",
+    "slug": "tensordyne"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Lightmatter",
+    "ats": "greenhouse",
+    "slug": "lightmatter"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Lemurian Labs",
+    "ats": "greenhouse",
+    "slug": "lemurianlabs"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Upscale AI",
+    "ats": "lever",
+    "slug": "upscale-ai"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Extropic",
+    "ats": "ashby",
+    "slug": "extropic"
+  },
+  {
+    "category": "inference-silicon",
+    "name": "Normal Computing",
+    "ats": "ashby",
+    "slug": "normalcomputing"
+  },
+  {
+    "category": "inference-software",
+    "name": "Inferact (vLLM)",
+    "ats": "ashby",
+    "slug": "inferact"
+  },
+  {
+    "category": "inference-software",
+    "name": "RadixArk (SGLang)",
+    "ats": "ashby",
+    "slug": "radixark"
+  },
+  {
+    "category": "inference-software",
+    "name": "Modular",
+    "ats": "gem",
+    "slug": "modular"
+  },
+  {
+    "category": "inference-software",
+    "name": "SkyPilot",
+    "ats": "ashby",
+    "slug": "skypilot"
+  },
+  {
+    "category": "inference-software",
+    "name": "Wafer",
+    "ats": "ashby",
+    "slug": "wafer"
+  },
+  {
+    "category": "inference-software",
+    "name": ".txt",
+    "ats": "ashby",
+    "slug": "dottxt"
+  },
+  {
+    "category": "inference-software",
+    "name": "Kog",
+    "ats": "ashby",
+    "slug": "kog"
+  },
+  {
+    "category": "inference-software",
+    "name": "Exo",
+    "ats": "ashby",
+    "slug": "exo"
+  },
+  {
+    "category": "efficient-models",
+    "name": "Inception",
+    "ats": "gem",
+    "slug": "inception"
+  },
+  {
+    "category": "efficient-models",
+    "name": "Liquid AI",
+    "ats": "ashby",
+    "slug": "liquid-ai"
+  },
+  {
+    "category": "efficient-models",
+    "name": "Cartesia",
+    "ats": "ashby",
+    "slug": "cartesia"
+  },
+  {
+    "category": "efficient-models",
+    "name": "Zyphra",
+    "ats": "ashby",
+    "slug": "zyphra"
+  }
+]

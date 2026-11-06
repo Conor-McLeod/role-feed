@@ -1,0 +1,17 @@
+{
+  "name": "role-feed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply role-feed --local",
+    "db:migrate:remote": "wrangler d1 migrations apply role-feed --remote"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "wrangler": "^4.156.0"
+  }
+}
