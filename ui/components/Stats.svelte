@@ -15,19 +15,24 @@
       .sort()
       .at(-1);
     return [
-      ["Companies", companies.length],
+      ["Companies tracked", companies.length],
       ["Open roles", open.toLocaleString()],
-      ...(newCount != null ? [["New in view", newCount, newCount ? "hot" : ""]] : []),
+      ...(newCount != null ? [["New in view", newCount, newCount ? "new" : ""]] : []),
       ["Last poll", last ? ago(last) : "never"],
-      ...(failing ? [["Failing", failing, "hot"]] : []),
+      ["Failing polls", failing, failing ? "bad" : "good"],
     ] as [string, string | number, string?][];
   });
 </script>
 
-<dl class="stats" aria-live="polite">
-  {#if companies.length}
-    {#each items as [label, value, cls = ""] (label)}
-      <div class={cls}><dt>{label}</dt><dd>{value}</dd></div>
-    {/each}
-  {/if}
-</dl>
+<section class="card overview">
+  <h2>Overview</h2>
+  <dl aria-live="polite">
+    {#if companies.length}
+      {#each items as [label, value, cls = ""] (label)}
+        <div class={cls}><dt>{label}</dt><dd>{value}</dd></div>
+      {/each}
+    {:else}
+      <div><dt>Loading…</dt><dd></dd></div>
+    {/if}
+  </dl>
+</section>

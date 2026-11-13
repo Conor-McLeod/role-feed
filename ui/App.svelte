@@ -204,6 +204,18 @@
     else if (e.key === "z") undo();
   }
 
+  const VIEWS = [
+    ["inbox", "Inbox"],
+    ["archived", "Archived"],
+    ["all", "All"],
+  ] as const;
+
+  // Sortable date columns; both sort newest first.
+  const SORTS = [
+    ["posted", "Posted"],
+    ["seen", "First seen"],
+  ] as const;
+
   function onMarkSeen() {
     since = markAllSeen();
     loadListings();
@@ -226,45 +238,95 @@
 
 <svelte:window {onkeydown} />
 
-<header class="masthead">
-  <div class="brand">
-    <h1>role<span>—</span>feed</h1>
-    <p class="tagline">Inference &amp; infrastructure openings, wired daily.</p>
-  </div>
-  <Stats {companies} {newCount} />
+<header class="topbar">
+  <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>role-feed</a>
+  <span class="crumb">Inference &amp; infrastructure openings, wired daily</span>
 </header>
 
 <div class="layout">
   <aside class="rail">
-    <Filters bind:filters {companies} bind:searchInput />
+    <Filters bind:filters {companies} />
   </aside>
 
   <main>
-    <div class="toolbar">
-      <p>{summary}</p>
+    <header class="page-head">
+      <div>
+        <h1>Roles</h1>
+        <p class="sub">{summary}</p>
+      </div>
       <div class="actions">
         <button
           type="button"
+          class="btn"
           title={view === "archived" ? "Move every role shown back to the inbox" : "Hide every role shown from the inbox"}
           disabled={loading || !listings.some((l) => !!l.archived_at === (view === "archived"))}
           onclick={archiveAllShown}
         >
           {view === "archived" ? "Unarchive all shown" : "Archive all shown"}
         </button>
-        <button type="button" title="Clear the NEW markers" onclick={onMarkSeen}>Mark all seen</button>
-        <button type="button" title="Re-poll every company now" disabled={refreshing} onclick={onRefresh}>
+        <button type="button" class="btn" title="Clear the New markers" onclick={onMarkSeen}>Mark all seen</button>
+        <button type="button" class="btn primary" title="Re-poll every company now" disabled={refreshing} onclick={onRefresh}>
           {refreshing ? "Queued…" : "Refresh now"}
         </button>
       </div>
+    </header>
+
+    <nav class="tabs" aria-label="View">
+      {#each VIEWS as [value, label] (value)}
+        <button type="button" aria-current={filters.view === value ? "page" : undefined} onclick={() => (filters.view = value)}>
+          {label}
+        </button>
+      {/each}
+    </nav>
+
+    <div class="search-card">
+      <label class="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+        <input
+          name="q"
+          type="search"
+          placeholder="Search roles"
+          aria-label="Search roles"
+          bind:value={filters.q}
+          bind:this={searchInput}
+        />
+        <kbd>/</kbd>
+      </label>
+      <label class="check"><input name="desc" type="checkbox" bind:checked={filters.desc} /> Also search descriptions</label>
     </div>
 
-    <div class="feed" bind:this={feedEl}>
+    <div class="table" role="table" aria-label="Roles" bind:this={feedEl}>
+      <div class="thead" role="row">
+        <div role="columnheader">Company</div>
+        <div role="columnheader">Role</div>
+        <div role="columnheader">Location</div>
+        {#each SORTS as [value, label] (value)}
+          <div role="columnheader" class="date" aria-sort={filters.sort === value ? "descending" : "none"}>
+            <button
+              type="button"
+              class="sort"
+              class:active={filters.sort === value}
+              title="Sort and group by {label.toLowerCase()}, newest first"
+              onclick={() => (filters.sort = value)}
+            >
+              {label}
+              <svg viewBox="0 0 10 14" aria-hidden="true">
+                <path class="up" d="M2 5.5 5 2.5l3 3" /><path class="down" d="M2 8.5l3 3 3-3" />
+              </svg>
+            </button>
+          </div>
+        {/each}
+        <div role="columnheader" class="act"><span class="sr-only">Actions</span></div>
+      </div>
+
       {#key loadId}
         {#if loaded && !listings.length}
-          <p class="empty">Nothing on the wire matching that.</p>
+          <div class="empty" role="row"><div role="cell">No roles match these filters.</div></div>
         {/if}
         {#each days as day, d (d)}
-          <h3 class="day">{day.label} <small>{day.rows.length} role{day.rows.length === 1 ? "" : "s"}</small></h3>
+          <div class="day" role="row">
+            <div role="cell">{day.label} <small>{day.rows.length} role{day.rows.length === 1 ? "" : "s"}</small></div>
+          </div>
           {#each day.rows as { l, i } (l.id)}
             <JobRow
               listing={l}
@@ -285,10 +347,14 @@
     </div>
 
     <p class="hint">
-      Keys: <kbd>/</kbd> search · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>enter</kbd> expand · <kbd>o</kbd> open posting ·
+      <kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>enter</kbd> expand · <kbd>o</kbd> open posting ·
       <kbd>e</kbd> archive · <kbd>z</kbd> undo
     </p>
   </main>
+
+  <aside class="side">
+    <Stats {companies} {newCount} />
+  </aside>
 </div>
 
 <div class="toast-region" role="status" aria-live="polite">
