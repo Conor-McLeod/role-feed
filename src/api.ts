@@ -1,6 +1,7 @@
 // JSON API for the feed UI.
 
 import { companyHealth, type CompanyStatus } from "./health";
+import { createJobPage, findJobPage, NotionError, notionConfig } from "./notion";
 import { enqueueAll } from "./poll";
 import { probeBoard } from "./sources";
 import { addCompany, setEnabled } from "./store";
@@ -51,6 +52,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 
   // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
   if (req.method === "POST" && path === "/api/archive") return archive(env.DB, req);
+
+  // Send a listing to the Notion Jobs database. Body: { id: string }.
+  if (req.method === "POST" && path === "/api/notion") return addToNotion(env, req);
 
   // Re-poll every company now (the daily cron does the same).
   if (req.method === "POST" && path === "/api/refresh") {
@@ -184,6 +188,71 @@ async function archive(db: D1Database, req: Request): Promise<Response> {
   return json({ updated: result.meta.changes ?? 0 });
 }
 
+async function addToNotion(env: Env, req: Request): Promise<Response> {
+  const cfg = notionConfig(env);
+  if (!cfg) return json({ error: "Notion isn't configured (set NOTION_TOKEN and NOTION_DATA_SOURCE_ID)" }, 501);
+
+  let id: unknown;
+  try {
+    ({ id } = await req.json<{ id?: unknown }>());
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+  if (typeof id !== "string") return json({ error: "expected { id: string }" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT l.title, l.url, l.description, l.notion_url, c.name AS company
+     FROM listings l JOIN companies c ON c.key = l.company_key WHERE l.id = ?1`,
+  )
+    .bind(id)
+    .first<{ title: string; url: string; description: string | null; notion_url: string | null; company: string }>();
+  if (!row) return json({ error: "not found" }, 404);
+  if (row.notion_url) return json({ notion_url: row.notion_url, created: false });
+
+  // Claim the listing so a concurrent request (another tab, a retry) can't
+  // also create a page: Notion's query index lags new pages, so findJobPage
+  // alone wouldn't see the other request's page.
+  const claimedAt = new Date().toISOString();
+  const stale = new Date(Date.now() - NOTION_CLAIM_TTL_MS).toISOString();
+  const claim = await env.DB.prepare(
+    `UPDATE listings SET notion_claimed_at = ?2
+     WHERE id = ?1 AND notion_url IS NULL AND (notion_claimed_at IS NULL OR notion_claimed_at < ?3)`,
+  )
+    .bind(id, claimedAt, stale)
+    .run();
+  if (!claim.meta.changes) {
+    const cur = await env.DB.prepare("SELECT notion_url FROM listings WHERE id = ?1")
+      .bind(id)
+      .first<{ notion_url: string | null }>();
+    if (cur?.notion_url) return json({ notion_url: cur.notion_url, created: false });
+    return json({ error: "already being added, try again in a moment" }, 409);
+  }
+
+  try {
+    // Already in Notion (added by hand, or a previous request that failed to
+    // record it): link to that page instead of making a duplicate.
+    const existing = await findJobPage(cfg, row.url);
+    const page = existing ?? (await createJobPage(cfg, row));
+    const created = !existing;
+    await env.DB.prepare("UPDATE listings SET notion_url = ?2, notion_claimed_at = NULL WHERE id = ?1")
+      .bind(id, page.url)
+      .run();
+    console.log({ event: "notion_add", listing: id, page: page.id });
+    return json({ notion_url: page.url, created });
+  } catch (err) {
+    await env.DB.prepare("UPDATE listings SET notion_claimed_at = NULL WHERE id = ?1 AND notion_claimed_at = ?2")
+      .bind(id, claimedAt)
+      .run()
+      .catch(() => {}); // the claim expires on its own
+    const message = err instanceof Error ? err.message : String(err);
+    console.error({ event: "notion_failed", listing: id, error: message });
+    return json({ error: message }, err instanceof NotionError ? 502 : 500);
+  }
+}
+
+// Longer than any one request can run, so only an abandoned claim expires.
+const NOTION_CLAIM_TTL_MS = 2 * 60_000;
+
 /**
  * Query params (all optional):
  *   q         space-separated terms, all must match (title, company, team, department, location)
@@ -253,7 +322,7 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
   const sql = `
     SELECT l.id, l.company_key, c.name AS company, c.category, l.title, l.department, l.team,
            l.location, l.locations, l.remote, l.workplace, l.employment, l.compensation, l.url,
-           l.published_at, l.first_seen_at, l.closed_at, l.archived_at,
+           l.published_at, l.first_seen_at, l.closed_at, l.archived_at, l.notion_url,
            count(*) OVER () AS total
     FROM listings l JOIN companies c ON c.key = l.company_key
     WHERE ${where.join(" AND ")}

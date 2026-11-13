@@ -48,13 +48,32 @@ pnpm db:migrate:remote
 
 That order is only for the first deploy, when D1 doesn't exist until `wrangler deploy` creates it. After
 that, run `pnpm db:migrate:remote` **before** `pnpm run deploy`: new code can depend on new columns (e.g.
-`companies.enabled` from `0003`), and every endpoint, the cron and the queue consumer fail until they exist.
+`companies.enabled` from `0005`), and every endpoint, the cron and the queue consumer fail until they exist.
 
 The Worker is served only on the custom domain in `wrangler.jsonc` (`routes`); `workers_dev` and
 `preview_urls` are off, so there's no unprotected `*.workers.dev` hostname. Put that domain behind
 Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). Without that, anyone with the
 URL can read the feed and trigger `/api/refresh`. Then sign in and press "Refresh now" for the first
 fill (or wait for the daily cron).
+
+## Add to Notion
+
+Each role has an "Add to Notion" button (or press `n`) that creates a page in the Notion **Jobs**
+database, where applications are tracked: `Position` is "<title> @ <company>", `Link` is the posting
+URL, and the page body is the job description (`src/notion.ts`). If a page with that `Link` already
+exists it's linked instead of duplicated. The page URL is stored in `listings.notion_url`, and the row
+then shows "In Notion".
+
+Setup:
+
+1. notion.so/profile/integrations → New integration (internal), with read + insert content.
+2. Open the Jobs database → ••• → Connections → add the integration.
+3. `npx wrangler secret put NOTION_TOKEN` (and for local dev, copy `.dev.vars.example` to
+   `.dev.vars` and fill it in).
+4. `pnpm db:migrate:remote` for the `notion_url` and `notion_claimed_at` columns.
+
+The data source ID and property names are `vars` in `wrangler.jsonc`. Without a token the button
+reports "Notion isn't configured".
 
 ## Managing companies
 
@@ -68,4 +87,4 @@ Open the **Companies** page (`/#companies`):
   the feed, but the company and its listings stay in D1. Resuming polls it immediately.
 
 API: `POST /api/companies` with `{ name, category, ats, slug }`; `PATCH /api/companies/<ats>:<slug>` with
-`{ enabled }`. The list used to live in `src/companies.json`; migration `0003` seeded the table from it.
+`{ enabled }`. The list used to live in `src/companies.json`; migration `0005` seeded the table from it.

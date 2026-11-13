@@ -29,4 +29,16 @@ export const api = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
+  // Creates a page in the Notion Jobs database (or links an existing one for
+  // the same posting URL). Throws with the server's reason on failure.
+  addToNotion: async (id: string): Promise<{ notion_url: string; created: boolean }> => {
+    const res = await fetch("/api/notion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    return data;
+  },
 };

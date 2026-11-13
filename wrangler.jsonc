@@ -54,6 +54,17 @@
     "crons": ["0 12 * * *"]
   },
 
+  // "Add to Notion" target: the Jobs database's data source. The token is a
+  // secret: `wrangler secret put NOTION_TOKEN` (or NOTION_TOKEN in .dev.vars).
+  "vars": {
+    "NOTION_DATA_SOURCE_ID": "280a39e7-3411-8067-b6d6-000bda30499a",
+    "NOTION_TITLE_PROPERTY": "Position",
+    "NOTION_URL_PROPERTY": "Link"
+  },
+  "secrets": {
+    "required": ["NOTION_TOKEN"]
+  },
+
   "observability": {
     "enabled": true
   }
