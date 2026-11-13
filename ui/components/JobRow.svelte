@@ -10,8 +10,10 @@
     cursor,
     open,
     q,
+    notionBusy,
     onselect,
     onarchive,
+    onnotion,
   }: {
     listing: Listing;
     index: number;
@@ -19,8 +21,10 @@
     cursor: boolean;
     open: boolean;
     q: string;
+    notionBusy: boolean;
     onselect: () => void;
     onarchive: () => void; // toggles archived
+    onnotion: () => void; // adds to Notion (no-op once there)
   } = $props();
 
   // The description isn't in the list payload; fetch it each time the row opens.
@@ -64,6 +68,7 @@
       {#if isNew}<span class="pill blue">New</span>{/if}
       {#if l.closed_at}<span class="pill grey" title="Closed {fmt(l.closed_at)}">Closed</span>{/if}
       {#if l.archived_at}<span class="pill grey" title="Archived {fmt(l.archived_at)}">Archived</span>{/if}
+      {#if l.notion_url}<a class="pill purple" href={l.notion_url} target="_blank" rel="noopener" title="Open in Notion">In Notion</a>{/if}
     </div>
     <div class="meta">
       {#if l.team || l.department}<span>{l.team || l.department}</span>{/if}
@@ -81,6 +86,22 @@
   </div>
   <div class="date" role="cell" data-label="Seen" title={fmt(l.first_seen_at)}>{ago(l.first_seen_at)}</div>
   <div class="act" role="cell">
+    {#if l.notion_url}
+      <a class="icon notion done" href={l.notion_url} target="_blank" rel="noopener" aria-label="Open in Notion" title="Open in Notion">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h7l3 3v8H3zM5.5 9l2 2 3-4" /></svg>
+      </a>
+    {:else}
+      <button
+        type="button"
+        class="icon notion"
+        aria-label="Add to Notion"
+        title="Add to your Notion Jobs database (n)"
+        disabled={notionBusy}
+        onclick={onnotion}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h7l3 3v8H3zM8 7v4M6 9h4" /></svg>
+      </button>
+    {/if}
     <button
       type="button"
       class="icon archive"
@@ -101,7 +122,16 @@
         {#if l.locations}<p class="detail-loc">{l.locations}</p>{/if}
         <!-- Escaped first, then only <mark> tags are added. -->
         <div class="desc">{@html highlight(esc(detail.description ?? "No description provided."), q)}</div>
-        <div class="links"><a class="btn primary" href={detail.url} target="_blank" rel="noopener">Open posting ↗</a></div>
+        <div class="links">
+          <a class="btn primary" href={detail.url} target="_blank" rel="noopener">Open posting ↗</a>
+          {#if l.notion_url}
+            <a class="btn" href={l.notion_url} target="_blank" rel="noopener">Open in Notion ↗</a>
+          {:else}
+            <button type="button" class="btn" disabled={notionBusy} onclick={onnotion}>
+              {notionBusy ? "Adding…" : "Add to Notion"}
+            </button>
+          {/if}
+        </div>
       {:else}
         <p class="desc">Loading…</p>
       {/if}

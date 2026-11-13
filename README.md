@@ -51,6 +51,25 @@ Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). With
 URL can read the feed and trigger `/api/refresh`. Then sign in and press "Refresh now" for the first
 fill (or wait for the daily cron).
 
+## Add to Notion
+
+Each role has an "Add to Notion" button (or press `n`) that creates a page in the Notion **Jobs**
+database, where applications are tracked: `Position` is "<title> @ <company>", `Link` is the posting
+URL, and the page body is the job description (`src/notion.ts`). If a page with that `Link` already
+exists it's linked instead of duplicated. The page URL is stored in `listings.notion_url`, and the row
+then shows "In Notion".
+
+Setup:
+
+1. notion.so/profile/integrations → New integration (internal), with read + insert content.
+2. Open the Jobs database → ••• → Connections → add the integration.
+3. `npx wrangler secret put NOTION_TOKEN` (and for local dev, copy `.dev.vars.example` to
+   `.dev.vars` and fill it in).
+4. `pnpm db:migrate:remote` for the `notion_url` column.
+
+The data source ID and property names are `vars` in `wrangler.jsonc`. Without a token the button
+reports "Notion isn't configured".
+
 ## Adding a company
 
 Find the board slug in the careers page URL (`jobs.ashbyhq.com/<slug>`,

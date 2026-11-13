@@ -1,6 +1,7 @@
 // JSON API for the feed UI.
 
 import { companyHealth, type CompanyStatus } from "./health";
+import { createJobPage, findJobPage, NotionError, notionConfig } from "./notion";
 import { BY_KEY, enqueueAll } from "./poll";
 
 const json = (data: unknown, status = 200) =>
@@ -37,6 +38,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 
   // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
   if (req.method === "POST" && path === "/api/archive") return archive(env.DB, req);
+
+  // Send a listing to the Notion Jobs database. Body: { id: string }.
+  if (req.method === "POST" && path === "/api/notion") return addToNotion(env, req);
 
   // Re-poll every company now (the daily cron does the same).
   if (req.method === "POST" && path === "/api/refresh") {
@@ -75,6 +79,43 @@ async function archive(db: D1Database, req: Request): Promise<Response> {
     .bind(JSON.stringify(ids), archived ? 1 : 0, new Date().toISOString())
     .run();
   return json({ updated: result.meta.changes ?? 0 });
+}
+
+async function addToNotion(env: Env, req: Request): Promise<Response> {
+  const cfg = notionConfig(env);
+  if (!cfg) return json({ error: "Notion isn't configured (set NOTION_TOKEN and NOTION_DATA_SOURCE_ID)" }, 501);
+
+  let id: unknown;
+  try {
+    ({ id } = await req.json<{ id?: unknown }>());
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+  if (typeof id !== "string") return json({ error: "expected { id: string }" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT l.title, l.url, l.description, l.notion_url, c.name AS company
+     FROM listings l JOIN companies c ON c.key = l.company_key WHERE l.id = ?1`,
+  )
+    .bind(id)
+    .first<{ title: string; url: string; description: string | null; notion_url: string | null; company: string }>();
+  if (!row) return json({ error: "not found" }, 404);
+  if (row.notion_url) return json({ notion_url: row.notion_url, created: false });
+
+  try {
+    // Already in Notion (added by hand, or a previous request that failed to
+    // record it): link to that page instead of making a duplicate.
+    const existing = await findJobPage(cfg, row.url);
+    const page = existing ?? (await createJobPage(cfg, row));
+    const created = !existing;
+    await env.DB.prepare("UPDATE listings SET notion_url = ?2 WHERE id = ?1").bind(id, page.url).run();
+    console.log({ event: "notion_add", listing: id, page: page.id });
+    return json({ notion_url: page.url, created });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error({ event: "notion_failed", listing: id, error: message });
+    return json({ error: message }, err instanceof NotionError ? 502 : 500);
+  }
 }
 
 /**
@@ -146,7 +187,7 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
   const sql = `
     SELECT l.id, l.company_key, c.name AS company, c.category, l.title, l.department, l.team,
            l.location, l.locations, l.remote, l.workplace, l.employment, l.compensation, l.url,
-           l.published_at, l.first_seen_at, l.closed_at, l.archived_at,
+           l.published_at, l.first_seen_at, l.closed_at, l.archived_at, l.notion_url,
            count(*) OVER () AS total
     FROM listings l JOIN companies c ON c.key = l.company_key
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
