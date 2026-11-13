@@ -5,8 +5,9 @@ Cloudflare Worker + Cron + Queues + D1, with a Svelte UI built by Vite.
 
 ## How it works
 
-- `src/companies.json` lists companies by job board (`ashby`, `greenhouse`, `gem`, `lever`) and board slug.
-- A cron (`0 12 * * *`, 12:00 UTC) queues one message per company.
+- The `companies` table in D1 lists companies by job board (`ashby`, `greenhouse`, `gem`, `lever`) and
+  board slug. It's managed from the Companies page in the UI (see [Managing companies](#managing-companies)).
+- A cron (`0 12 * * *`, 12:00 UTC) queues one message per enabled company.
 - The queue consumer handles one company per invocation: fetch the public job board API, normalise
   (`src/sources.ts`), upsert into D1, mark anything no longer listed as closed (`src/store.ts`).
   Unchanged listings aren't rewritten.
@@ -45,6 +46,10 @@ pnpm run deploy                  # vite build + wrangler deploy; creates D1 on f
 pnpm db:migrate:remote
 ```
 
+That order is only for the first deploy, when D1 doesn't exist until `wrangler deploy` creates it. After
+that, run `pnpm db:migrate:remote` **before** `pnpm run deploy`: new code can depend on new columns (e.g.
+`companies.enabled` from `0005`), and every endpoint, the cron and the queue consumer fail until they exist.
+
 The Worker is served only on the custom domain in `wrangler.jsonc` (`routes`); `workers_dev` and
 `preview_urls` are off, so there's no unprotected `*.workers.dev` hostname. Put that domain behind
 Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). Without that, anyone with the
@@ -70,8 +75,16 @@ Setup:
 The data source ID and property names are `vars` in `wrangler.jsonc`. Without a token the button
 reports "Notion isn't configured".
 
-## Adding a company
+## Managing companies
 
-Find the board slug in the careers page URL (`jobs.ashbyhq.com/<slug>`,
-`job-boards.greenhouse.io/<slug>`, `jobs.gem.com/<slug>`, `jobs.lever.co/<slug>`), add an entry to
-`src/companies.json`, and deploy.
+Open the **Companies** page (`/#companies`):
+
+- **Add a company**: paste its careers page link (`jobs.ashbyhq.com/<slug>`, `job-boards.greenhouse.io/<slug>`,
+  `jobs.gem.com/<slug>`, `jobs.lever.co/<slug>`) to fill in the job board and slug, then give it a name and
+  category. The Worker checks the board exists before saving (a mistyped slug is rejected) and queues its
+  first poll straight away.
+- **Pause / resume**: the switch on each row. A paused company isn't polled and its roles are left out of
+  the feed, but the company and its listings stay in D1. Resuming polls it immediately.
+
+API: `POST /api/companies` with `{ name, category, ats, slug }`; `PATCH /api/companies/<ats>:<slug>` with
+`{ enabled }`. The list used to live in `src/companies.json`; migration `0005` seeded the table from it.

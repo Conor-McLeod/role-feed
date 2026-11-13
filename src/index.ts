@@ -1,6 +1,6 @@
 import { handleApi } from "./api";
-import { BY_KEY, enqueueAll, logUnhealthy, pollCompany } from "./poll";
-import { recordError, recordGaveUp } from "./store";
+import { enqueueAll, logUnhealthy, pollCompany } from "./poll";
+import { getCompany, recordError, recordGaveUp } from "./store";
 import type { FetchMessage } from "./types";
 
 const DEAD_LETTER_QUEUE = "role-feed-dlq";
@@ -26,7 +26,7 @@ export default {
     // Retries exhausted: record it on the company and drop the message.
     if (batch.queue === DEAD_LETTER_QUEUE) {
       for (const msg of batch.messages) {
-        if (BY_KEY.has(msg.body.key)) await recordGaveUp(env.DB, msg.body.key, new Date().toISOString());
+        await recordGaveUp(env.DB, msg.body.key, new Date().toISOString());
         console.error({ event: "poll_gave_up", company: msg.body.key });
         msg.ack();
       }
@@ -35,9 +35,9 @@ export default {
 
     // Fetch queue: one company per invocation (max_batch_size: 1).
     for (const msg of batch.messages) {
-      const company = BY_KEY.get(msg.body.key);
-      if (!company) {
-        msg.ack(); // removed from companies.json since it was queued
+      const company = await getCompany(env.DB, msg.body.key);
+      if (!company?.enabled) {
+        msg.ack(); // paused (or gone) since it was queued
         continue;
       }
       try {

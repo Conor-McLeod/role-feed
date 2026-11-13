@@ -2,7 +2,10 @@
 
 import { companyHealth, type CompanyStatus } from "./health";
 import { createJobPage, findJobPage, NotionError, notionConfig } from "./notion";
-import { BY_KEY, enqueueAll } from "./poll";
+import { enqueueAll } from "./poll";
+import { probeBoard } from "./sources";
+import { addCompany, setEnabled } from "./store";
+import { ATS, companyKey, type Ats, type Company, type FetchMessage } from "./types";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -14,10 +17,19 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // Writes must be JSON. Another site can only send a cross-site request with
+  // the Access cookie and no CORS preflight if it uses a form content type, so
+  // this check stops other sites from writing here.
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const type = req.headers.get("Content-Type")?.toLowerCase() ?? "";
+    if (!type.startsWith("application/json")) return json({ error: "expected Content-Type: application/json" }, 415);
+  }
+
   if (req.method === "GET" && path === "/api/listings") return listListings(env.DB, url.searchParams);
 
   if (req.method === "GET" && path.startsWith("/api/listings/")) {
-    const id = decodeURIComponent(path.slice("/api/listings/".length));
+    const id = decodePath(path.slice("/api/listings/".length));
+    if (id == null) return json({ error: "not found" }, 404);
     const row = await env.DB.prepare(
       `SELECT l.*, c.name AS company, c.category FROM listings l
        JOIN companies c ON c.key = l.company_key WHERE l.id = ?1`,
@@ -27,13 +39,15 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     return row ? json(row) : json({ error: "not found" }, 404);
   }
 
-  if (req.method === "GET" && path === "/api/companies") {
-    const { results } = await env.DB.prepare("SELECT * FROM companies ORDER BY category, name").all<
-      CompanyStatus & { key: string }
-    >();
-    const now = Date.now();
-    // health is null for companies no longer in companies.json (not polled any more).
-    return json(results.map((c) => ({ ...c, health: BY_KEY.has(c.key) ? companyHealth(c, now) : null })));
+  if (req.method === "GET" && path === "/api/companies") return json(await listCompanies(env.DB));
+
+  // Add a company. Body: { name, category, ats, slug }.
+  if (req.method === "POST" && path === "/api/companies") return createCompany(env, req);
+
+  // Pause or resume polling. Body: { enabled: boolean }.
+  if (req.method === "PATCH" && path.startsWith("/api/companies/")) {
+    const key = decodePath(path.slice("/api/companies/".length));
+    return key == null ? json({ error: "not found" }, 404) : updateCompany(env, req, key);
   }
 
   // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
@@ -50,6 +64,99 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   }
 
   return json({ error: "not found" }, 404);
+}
+
+async function listCompanies(db: D1Database, key?: string) {
+  const { results } = await db
+    .prepare(`SELECT * FROM companies ${key ? "WHERE key = ?1" : ""} ORDER BY category, name`)
+    .bind(...(key ? [key] : []))
+    .all<CompanyStatus & { key: string; enabled: number }>();
+  const now = Date.now();
+  // health is null for paused companies (not polled).
+  return results.map((c) => ({ ...c, enabled: !!c.enabled, health: c.enabled ? companyHealth(c, now) : null }));
+}
+
+/** decodeURIComponent, or null for a malformed escape like "%zz". */
+function decodePath(s: string): string | null {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return null;
+  }
+}
+
+async function readJson(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+const ATS_NAMES: Record<Ats, string> = { ashby: "Ashby", greenhouse: "Greenhouse", gem: "Gem", lever: "Lever" };
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const CATEGORY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+async function createCompany(env: Env, req: Request): Promise<Response> {
+  const body = await readJson(req);
+  if (!body) return json({ error: "invalid JSON" }, 400);
+  const ats = str(body.ats) as Ats;
+  const company: Company = {
+    name: str(body.name),
+    // "Inference Silicon" -> "inference-silicon", matching the existing keys.
+    category: str(body.category).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+    ats,
+    slug: str(body.slug),
+  };
+  if (!ATS.includes(ats)) return json({ error: `Job board must be one of ${ATS.join(", ")}` }, 400);
+  if (!SLUG.test(company.slug)) return json({ error: "Board slug should be the last part of the job board URL, e.g. baseten" }, 400);
+  if (!company.name || company.name.length > 100) return json({ error: "Name is required (at most 100 characters)" }, 400);
+  if (!CATEGORY.test(company.category) || company.category.length > 50) return json({ error: "Category is required" }, 400);
+
+  const key = companyKey(company);
+  // Board slugs are case-insensitive, so "Baseten" is the same board as "baseten".
+  const existing = await env.DB.prepare("SELECT key, name, enabled FROM companies WHERE key = ?1 COLLATE NOCASE")
+    .bind(key)
+    .first<{ key: string; name: string; enabled: number }>();
+  if (existing) {
+    const state = existing.enabled ? "already being polled" : "already in the list but paused; resume it there";
+    return json({ error: `${existing.name} (${existing.key}) is ${state}` }, 409);
+  }
+
+  // Catch a mistyped slug now rather than as a failed poll tomorrow.
+  let probe: { ok: boolean; status: number };
+  try {
+    probe = await probeBoard(company);
+  } catch (err) {
+    return json({ error: `Couldn't reach the ${ATS_NAMES[ats]} API: ${err instanceof Error ? err.message : err}` }, 502);
+  }
+  if (!probe.ok) {
+    const why = probe.status === 404 ? "no such board" : `HTTP ${probe.status}`;
+    return json({ error: `No ${ATS_NAMES[ats]} job board found at "${company.slug}" (${why})` }, 422);
+  }
+
+  if (!(await addCompany(env.DB, company, new Date().toISOString()))) {
+    return json({ error: `${key} already exists` }, 409);
+  }
+  // First poll right away instead of waiting for tomorrow's cron.
+  await env.FETCH_QUEUE.send({ key } satisfies FetchMessage);
+  console.log({ event: "company_added", company: key });
+  const [row] = await listCompanies(env.DB, key);
+  return json(row, 201);
+}
+
+async function updateCompany(env: Env, req: Request, key: string): Promise<Response> {
+  const body = await readJson(req);
+  if (typeof body?.enabled !== "boolean") return json({ error: "expected { enabled: boolean }" }, 400);
+  const { enabled } = body;
+  if (!(await setEnabled(env.DB, key, enabled))) return json({ error: "not found" }, 404);
+  // Resumed: catch up now rather than at the next cron.
+  if (enabled) await env.FETCH_QUEUE.send({ key } satisfies FetchMessage);
+  console.log({ event: enabled ? "company_resumed" : "company_paused", company: key });
+  const [row] = await listCompanies(env.DB, key);
+  return json(row);
 }
 
 const MAX_ARCHIVE_IDS = 2000; // matches the listings limit, so "archive all shown" fits
@@ -151,7 +258,7 @@ const NOTION_CLAIM_TTL_MS = 2 * 60_000;
  *   q         space-separated terms, all must match (title, company, team, department, location)
  *   desc=1    also match q against the description
  *   exclude   comma-separated terms; drop titles containing any of them
- *   company   comma-separated company keys
+ *   company   comma-separated company keys (listings of paused companies are never returned)
  *   category  comma-separated categories
  *   remote=1  remote-friendly only
  *   location  substring of any location
@@ -163,7 +270,7 @@ const NOTION_CLAIM_TTL_MS = 2 * 60_000;
  *   limit     default 500, max 2000
  */
 async function listListings(db: D1Database, p: URLSearchParams): Promise<Response> {
-  const where: string[] = [];
+  const where: string[] = ["c.enabled = 1"];
   const args: unknown[] = [];
   const arg = (v: unknown) => {
     args.push(v);
@@ -218,7 +325,7 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
            l.published_at, l.first_seen_at, l.closed_at, l.archived_at, l.notion_url,
            count(*) OVER () AS total
     FROM listings l JOIN companies c ON c.key = l.company_key
-    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    WHERE ${where.join(" AND ")}
     ORDER BY ${order}
     LIMIT ${limit}`;
 

@@ -31,7 +31,8 @@
 
   // ---------- loading ----------
   async function loadCompanies() {
-    companies = sortCompanies(await api.companies());
+    // Paused companies aren't polled and their roles are left out of the feed.
+    companies = sortCompanies((await api.companies()).filter((c) => c.enabled));
   }
 
   let reqId = 0;
@@ -262,11 +263,6 @@
 </script>
 
 <svelte:window {onkeydown} />
-
-<header class="topbar">
-  <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>role-feed</a>
-  <span class="crumb">Inference &amp; infrastructure openings, wired daily</span>
-</header>
 
 <div class="layout">
   <aside class="rail">

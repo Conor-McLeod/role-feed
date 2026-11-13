@@ -28,6 +28,19 @@ export async function fetchListings(company: Company): Promise<FetchResult> {
   return { listings, bytes: body.length, fetch_ms };
 }
 
+/**
+ * Check that a board exists without parsing it (a big board's JSON.parse can
+ * cost more CPU than a request handler gets). All four APIs answer 404 for an
+ * unknown slug.
+ */
+export async function probeBoard(company: Pick<Company, "ats" | "slug">): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(SOURCES[company.ats].url(company.slug), {
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+  });
+  await res.body?.cancel();
+  return { ok: res.ok, status: res.status };
+}
+
 interface Source {
   url(slug: string): string;
   parse(data: any): Listing[]; // ids are the board's own job id; prefixed by caller

@@ -1,20 +1,16 @@
-import companiesJson from "./companies.json";
 import { companyHealth } from "./health";
 import { fetchListings } from "./sources";
-import { markAttempt, openCount, saveListings, syncCompanies } from "./store";
+import { markAttempt, openCount, saveListings } from "./store";
 import { companyKey, type Company, type FetchMessage } from "./types";
-
-export const COMPANIES = companiesJson as Company[];
-export const BY_KEY = new Map(COMPANIES.map((c) => [companyKey(c), c]));
 
 // If a board that had several open roles suddenly returns none, assume a
 // glitch on their side rather than closing everything.
 const SUSPICIOUS_EMPTY = 3;
 
-/** Sync the company table and queue one fetch per company. */
+/** Queue one fetch per enabled company. */
 export async function enqueueAll(env: Env): Promise<number> {
-  await syncCompanies(env.DB, COMPANIES);
-  const messages = COMPANIES.map((c) => ({ body: { key: companyKey(c) } satisfies FetchMessage }));
+  const { results } = await env.DB.prepare("SELECT key FROM companies WHERE enabled = 1").all<{ key: string }>();
+  const messages = results.map(({ key }) => ({ body: { key } satisfies FetchMessage }));
   for (let i = 0; i < messages.length; i += 100) {
     await env.FETCH_QUEUE.sendBatch(messages.slice(i, i + 100));
   }
@@ -34,15 +30,14 @@ export async function pollCompany(env: Env, company: Company) {
   console.log({ event: "poll", company: key, open: listings.length, ...counts, bytes, fetch_ms });
 }
 
-/** Log a warning for every company whose last poll didn't succeed. Runs before each daily poll. */
+/** Log a warning for every polled company whose last poll didn't succeed. Runs before each daily poll. */
 export async function logUnhealthy(env: Env) {
   const { results } = await env.DB.prepare(
-    "SELECT key, last_attempt_at, last_success_at, last_error FROM companies",
+    "SELECT key, last_attempt_at, last_success_at, last_error FROM companies WHERE enabled = 1",
   ).all<{ key: string; last_attempt_at: string | null; last_success_at: string | null; last_error: string | null }>();
   const now = Date.now();
   let unhealthy = 0;
   for (const { key, ...status } of results) {
-    if (!BY_KEY.has(key)) continue; // removed from companies.json; no longer polled
     const health = companyHealth(status, now);
     if (health === "ok" || health === "pending") continue;
     unhealthy++;

@@ -12,7 +12,18 @@ export interface Company {
   last_success_at: string | null;
   last_error: string | null;
   open_count: number;
-  health: Health | null; // null once removed from companies.json
+  enabled: boolean; // false: paused, not polled and hidden from the feed
+  added_at: string | null; // null for companies seeded from the old companies.json
+  health: Health | null; // null while paused
+}
+
+export type Ats = "ashby" | "greenhouse" | "gem" | "lever";
+
+export interface NewCompany {
+  name: string;
+  category: string;
+  ats: Ats;
+  slug: string;
 }
 
 export interface Listing {
