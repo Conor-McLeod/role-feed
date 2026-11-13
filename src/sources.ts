@@ -7,16 +7,25 @@ import type { Ats, Company, Listing } from "./types";
 const USER_AGENT = "role-feed/1.0 (personal job feed)";
 const MAX_DESCRIPTION = 20_000;
 
-export async function fetchListings(company: Company): Promise<Listing[]> {
+export interface FetchResult {
+  listings: Listing[];
+  bytes: number; // response body size, in UTF-16 code units
+  fetch_ms: number; // network time; Date.now() only advances across I/O in Workers
+}
+
+export async function fetchListings(company: Company): Promise<FetchResult> {
+  const start = Date.now();
   const res = await fetch(SOURCES[company.ats].url(company.slug), {
     headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`${company.ats}/${company.slug}: HTTP ${res.status}`);
-  const data = await res.json();
+  const body = await res.text();
+  const fetch_ms = Date.now() - start;
   const prefix = `${company.ats}:${company.slug}:`;
-  return SOURCES[company.ats]
-    .parse(data)
+  const listings = SOURCES[company.ats]
+    .parse(JSON.parse(body))
     .map((l) => ({ ...l, id: prefix + l.id, published_at: toUtc(l.published_at) }));
+  return { listings, bytes: body.length, fetch_ms };
 }
 
 interface Source {

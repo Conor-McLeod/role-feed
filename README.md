@@ -10,6 +10,12 @@ Cloudflare Worker + Cron + Queues + D1, with a static UI.
 - The queue consumer handles one company per invocation: fetch the public job board API, normalise
   (`src/sources.ts`), upsert into D1, mark anything no longer listed as closed (`src/store.ts`).
   Unchanged listings aren't rewritten.
+- Messages that exhaust their retries go to `role-feed-dlq`, which records the give-up on the company.
+- Each company has a health status (`src/health.ts`): `failed` (error recorded), `interrupted` (started
+  but never finished, e.g. killed for CPU), or `stale` (no success in 36h). The UI marks these, and
+  the daily cron logs a `company_unhealthy` warning for each. Logs are structured objects (`event:
+  "poll"` carries per-company write counts, response size and fetch time), so they can be filtered
+  in Workers Logs.
 - `/api/*` serves the feed; `public/` is the UI. "New" is relative to your last visit (localStorage).
 
 ## Develop
@@ -26,6 +32,7 @@ curl "http://localhost:8787/__scheduled"   # run the daily poll now
 ```bash
 npx wrangler login
 npx wrangler queues create role-feed-fetch
+npx wrangler queues create role-feed-dlq
 npx wrangler deploy              # creates the D1 database on first deploy
 pnpm db:migrate:remote
 curl -X POST https://role-feed.<your-subdomain>.workers.dev/api/refresh   # first fill

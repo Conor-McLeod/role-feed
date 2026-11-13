@@ -1,7 +1,9 @@
 import { handleApi } from "./api";
-import { BY_KEY, enqueueAll, pollCompany } from "./poll";
-import { recordError } from "./store";
+import { BY_KEY, enqueueAll, logUnhealthy, pollCompany } from "./poll";
+import { recordError, recordGaveUp } from "./store";
 import type { FetchMessage } from "./types";
+
+const DEAD_LETTER_QUEUE = "role-feed-dlq";
 
 export default {
   async fetch(req, env) {
@@ -9,13 +11,29 @@ export default {
     return handleApi(req, env);
   },
 
-  // Daily cron: queue one message per company.
+  // Daily cron: report yesterday's problems, then queue one message per company.
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(enqueueAll(env).then((n) => console.log(`queued ${n} companies`)));
+    ctx.waitUntil(
+      (async () => {
+        const unhealthy = await logUnhealthy(env);
+        const queued = await enqueueAll(env);
+        console.log({ event: "enqueue", trigger: "cron", queued, unhealthy });
+      })(),
+    );
   },
 
-  // One company per invocation (max_batch_size: 1).
   async queue(batch, env) {
+    // Retries exhausted: record it on the company and drop the message.
+    if (batch.queue === DEAD_LETTER_QUEUE) {
+      for (const msg of batch.messages) {
+        if (BY_KEY.has(msg.body.key)) await recordGaveUp(env.DB, msg.body.key, new Date().toISOString());
+        console.error({ event: "poll_gave_up", company: msg.body.key });
+        msg.ack();
+      }
+      return;
+    }
+
+    // Fetch queue: one company per invocation (max_batch_size: 1).
     for (const msg of batch.messages) {
       const company = BY_KEY.get(msg.body.key);
       if (!company) {
@@ -27,7 +45,7 @@ export default {
         msg.ack();
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
-        console.error(`${msg.body.key}: ${error}`);
+        console.error({ event: "poll_failed", company: msg.body.key, attempt: msg.attempts, error });
         await recordError(env.DB, msg.body.key, error, new Date().toISOString());
         msg.retry({ delaySeconds: 300 });
       }

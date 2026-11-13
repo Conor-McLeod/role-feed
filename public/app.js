@@ -95,9 +95,11 @@ function renderCompanies() {
       ul.append(h);
     }
     const li = document.createElement("li");
-    const err = c.last_error ? ` title="Last fetch failed: ${esc(c.last_error)}"` : "";
-    li.innerHTML = `<label${err}><input type="checkbox" value="${esc(c.key)}" ${state.companies.has(c.key) ? "checked" : ""} />
-      <span>${esc(c.name)}${c.last_error ? ' <span class="err">●</span>' : ""}</span>
+    const problem = healthProblem(c);
+    const title = problem ? ` title="${esc(problem.text)}"` : "";
+    const dot = problem ? ` <span class="err">${problem.dot}</span>` : "";
+    li.innerHTML = `<label${title}><input type="checkbox" value="${esc(c.key)}" ${state.companies.has(c.key) ? "checked" : ""} />
+      <span>${esc(c.name)}${dot}</span>
       <span class="n">${c.last_success_at ? c.open_count : "–"}</span></label>`;
     li.querySelector("input").onchange = (e) => {
       e.target.checked ? state.companies.add(c.key) : state.companies.delete(c.key);
@@ -107,9 +109,24 @@ function renderCompanies() {
   }
 }
 
+// `health` comes from /api/companies (see src/health.ts). Solid dot: the poll
+// failed with an error. Hollow dot: it died without one, or hasn't succeeded lately.
+function healthProblem(c) {
+  switch (c.health) {
+    case "failed":
+      return { dot: "●", text: `Last fetch failed: ${c.last_error}` };
+    case "interrupted":
+      return { dot: "○", text: `Last poll started ${ago(c.last_attempt_at)} but never finished (likely hit the CPU limit)` };
+    case "stale":
+      return { dot: "○", text: `No successful poll since ${ago(c.last_success_at)}` };
+    default:
+      return null;
+  }
+}
+
 function renderStats(newCount = null) {
   const open = companies.reduce((n, c) => n + (c.open_count ?? 0), 0);
-  const failing = companies.filter((c) => c.last_error).length;
+  const failing = companies.filter(healthProblem).length;
   const last = companies.map((c) => c.last_success_at).filter(Boolean).sort().at(-1);
   const items = [
     ["Companies", companies.length],

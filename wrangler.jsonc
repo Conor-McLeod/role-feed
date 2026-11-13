@@ -29,6 +29,14 @@
         "queue": "role-feed-fetch",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "role-feed-dlq"
+      },
+      // Messages that exhausted their retries land here, so the give-up is
+      // recorded on the company instead of the message silently vanishing.
+      {
+        "queue": "role-feed-dlq",
+        "max_batch_size": 10,
         "max_retries": 3
       }
     ]

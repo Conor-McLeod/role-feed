@@ -65,7 +65,30 @@ export async function saveListings(db: D1Database, key: string, listings: Listin
       .bind(key, now),
   );
 
-  await db.batch(statements);
+  const results = await db.batch(statements);
+  const upserts = results.slice(0, -2);
+  return {
+    written: upserts.reduce((n, r) => n + (r.meta.changes ?? 0), 0), // new, changed or reopened
+    closed: results.at(-2)?.meta.changes ?? 0,
+    rows_written: results.reduce((n, r) => n + (r.meta.rows_written ?? 0), 0), // billed D1 writes, incl. indexes
+  };
+}
+
+/** Mark the start of a poll, so a run killed mid-way is visible as attempt > success. */
+export async function markAttempt(db: D1Database, key: string, now: string) {
+  await db.prepare("UPDATE companies SET last_attempt_at = ?2 WHERE key = ?1").bind(key, now).run();
+}
+
+/** Called once retries are exhausted. Keeps a caught error's message if there is one. */
+export async function recordGaveUp(db: D1Database, key: string, now: string) {
+  await db
+    .prepare(
+      `UPDATE companies SET last_attempt_at = ?2,
+         last_error = coalesce(last_error, 'Gave up after all retries without a recorded error (likely exceeded the CPU limit)')
+       WHERE key = ?1`,
+    )
+    .bind(key, now)
+    .run();
 }
 
 export async function openCount(db: D1Database, key: string): Promise<number> {

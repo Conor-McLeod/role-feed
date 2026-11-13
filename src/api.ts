@@ -1,6 +1,7 @@
 // JSON API for the feed UI.
 
-import { enqueueAll } from "./poll";
+import { companyHealth, type CompanyStatus } from "./health";
+import { BY_KEY, enqueueAll } from "./poll";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -26,13 +27,18 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   }
 
   if (req.method === "GET" && path === "/api/companies") {
-    const { results } = await env.DB.prepare("SELECT * FROM companies ORDER BY category, name").all();
-    return json(results);
+    const { results } = await env.DB.prepare("SELECT * FROM companies ORDER BY category, name").all<
+      CompanyStatus & { key: string }
+    >();
+    const now = Date.now();
+    // health is null for companies no longer in companies.json (not polled any more).
+    return json(results.map((c) => ({ ...c, health: BY_KEY.has(c.key) ? companyHealth(c, now) : null })));
   }
 
   // Re-poll every company now (the daily cron does the same).
   if (req.method === "POST" && path === "/api/refresh") {
     const n = await enqueueAll(env);
+    console.log({ event: "enqueue", trigger: "manual", queued: n });
     return json({ queued: n });
   }
 
