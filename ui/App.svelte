@@ -185,7 +185,11 @@
     notionBusy = [...notionBusy, l.id];
     try {
       const { notion_url, created } = await api.addToNotion(l.id);
+      // The list may have reloaded while this was in flight: update the row
+      // that's shown now too, not just the object we started from.
       l.notion_url = notion_url;
+      const shown = listings.find((x) => x.id === l.id);
+      if (shown) shown.notion_url = notion_url;
       showToast(`${created ? "Added" : "Already in Notion:"} “${truncate(l.title, 60)}”${created ? " to Notion" : ""}`);
     } catch (err) {
       showToast(`Couldn't add to Notion (${err instanceof Error ? err.message : err}).`);
