@@ -342,6 +342,37 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 .hint { margin-top: 2rem; font: 11px var(--mono); color: var(--ink-3); }
 
+/* ---------- archiving ---------- */
+
+.when .archive { display: block; margin: 0.3rem 0 0 auto; visibility: hidden; }
+.job:hover .archive, .job.cursor .archive, .archive:focus-visible { visibility: visible; }
+@media (hover: none) { .when .archive { visibility: visible; } }
+.job.archived .title, .job.archived .co { color: var(--ink-3); }
+
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 10;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 0.6rem 0.55rem 1rem;
+  background: var(--ink);
+  color: var(--paper);
+  font: 12px var(--mono);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+  animation: rise 0.2s ease-out both;
+}
+.toast button { color: var(--paper); border-color: var(--paper); white-space: nowrap; }
+.toast button:hover { background: var(--paper); color: var(--ink); }
+.toast kbd { color: inherit; border-color: currentColor; margin-left: 0.3rem; }
+
 @media (prefers-reduced-motion: reduce) {
-  .job { animation: none; }
+  .job, .toast { animation: none; }
 }

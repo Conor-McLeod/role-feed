@@ -11,6 +11,7 @@
     open,
     q,
     onselect,
+    onarchive,
   }: {
     listing: Listing;
     index: number;
@@ -19,6 +20,7 @@
     open: boolean;
     q: string;
     onselect: () => void;
+    onarchive: () => void; // toggles archived
   } = $props();
 
   // The description isn't in the list payload; fetch it each time the row opens.
@@ -33,7 +35,7 @@
   });
 
   function onclick(e: MouseEvent) {
-    if ((e.target as Element).closest("a, .detail")) return;
+    if ((e.target as Element).closest("a, button, .detail")) return;
     onselect();
   }
 </script>
@@ -44,6 +46,7 @@
   class="job"
   class:new={isNew}
   class:closed={!!l.closed_at}
+  class:archived={!!l.archived_at}
   class:cursor
   style:--i={index}
   data-index={index}
@@ -51,8 +54,18 @@
 >
   <div class="co" title={l.company}>{l.company}</div>
   <div class="title-wrap"><a class="title" href={l.url} target="_blank" rel="noopener">{l.title}</a>{#if isNew}<span class="badge">NEW</span>{/if}</div>
-  <div class="when" title="Posted {l.published_at ?? '?'} · first seen {l.first_seen_at}">
-    {l.published_at ? ago(l.published_at) : "–"}
+  <div class="when">
+    <span title="Posted {l.published_at ?? '?'} · first seen {l.first_seen_at}">
+      {l.published_at ? ago(l.published_at) : "–"}
+    </span>
+    <button
+      type="button"
+      class="link archive"
+      title={l.archived_at ? "Move back to the inbox (e)" : "Hide from the inbox (e)"}
+      onclick={onarchive}
+    >
+      {l.archived_at ? "unarchive" : "archive"}
+    </button>
   </div>
   <div class="meta">
     {#if l.locations}<span>{truncate(l.locations, 90)}</span>{/if}
@@ -61,6 +74,7 @@
     {#if l.employment && !/full/.test(l.employment)}<span>{l.employment}</span>{/if}
     {#if l.compensation}<span class="comp">{l.compensation}</span>{/if}
     {#if l.closed_at}<span>closed {ago(l.closed_at)}</span>{/if}
+    {#if l.archived_at}<span>archived {ago(l.archived_at)}</span>{/if}
   </div>
   {#if open}
     <div class="detail">
