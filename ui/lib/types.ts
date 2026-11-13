@@ -34,6 +34,7 @@ export interface Listing {
   first_seen_at: string;
   closed_at: string | null;
   archived_at: string | null;
+  notion_url: string | null; // set once sent to the Notion Jobs database
 }
 
 export interface ListingDetail extends Listing {

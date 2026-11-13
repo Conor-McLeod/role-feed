@@ -174,6 +174,26 @@
     }
   }
 
+  // ---------- notion ----------
+  // Not optimistic: the page only exists once Notion says so. The row's button
+  // is disabled while its request is in flight.
+  let notionBusy = $state<string[]>([]);
+
+  async function addToNotion(l: Listing) {
+    if (l.notion_url) return void window.open(l.notion_url, "_blank", "noopener");
+    if (notionBusy.includes(l.id)) return;
+    notionBusy = [...notionBusy, l.id];
+    try {
+      const { notion_url, created } = await api.addToNotion(l.id);
+      l.notion_url = notion_url;
+      showToast(`${created ? "Added" : "Already in Notion:"} “${truncate(l.title, 60)}”${created ? " to Notion" : ""}`);
+    } catch (err) {
+      showToast(`Couldn't add to Notion (${err instanceof Error ? err.message : err}).`);
+    } finally {
+      notionBusy = notionBusy.filter((id) => id !== l.id);
+    }
+  }
+
   // ---------- interaction ----------
   async function setCursor(i: number) {
     cursor = Math.max(0, Math.min(i, listings.length - 1));
@@ -200,6 +220,7 @@
     else if (e.key === "k") setCursor(cursor - 1);
     else if (e.key === "Enter" && current) toggle(current.id);
     else if (e.key === "o" && current) window.open(current.url, "_blank", "noopener");
+    else if (e.key === "n" && current) addToNotion(current);
     else if (e.key === "e" && current) setArchived([current], !current.archived_at);
     else if (e.key === "z") undo();
   }
@@ -339,7 +360,9 @@
                 setCursor(i);
                 toggle(l.id);
               }}
+              notionBusy={notionBusy.includes(l.id)}
               onarchive={() => setArchived([l], !l.archived_at)}
+              onnotion={() => addToNotion(l)}
             />
           {/each}
         {/each}
@@ -348,7 +371,7 @@
 
     <p class="hint">
       <kbd>/</kbd> search · <kbd>j</kbd> <kbd>k</kbd> move · <kbd>enter</kbd> expand · <kbd>o</kbd> open posting ·
-      <kbd>e</kbd> archive · <kbd>z</kbd> undo
+      <kbd>n</kbd> add to Notion · <kbd>e</kbd> archive · <kbd>z</kbd> undo
     </p>
   </main>
 
