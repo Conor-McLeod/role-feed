@@ -35,6 +35,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     return json(results.map((c) => ({ ...c, health: BY_KEY.has(c.key) ? companyHealth(c, now) : null })));
   }
 
+  // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
+  if (req.method === "POST" && path === "/api/archive") return archive(env.DB, req);
+
   // Re-poll every company now (the daily cron does the same).
   if (req.method === "POST" && path === "/api/refresh") {
     const n = await enqueueAll(env);
@@ -43,6 +46,35 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   }
 
   return json({ error: "not found" }, 404);
+}
+
+const MAX_ARCHIVE_IDS = 2000; // matches the listings limit, so "archive all shown" fits
+
+async function archive(db: D1Database, req: Request): Promise<Response> {
+  let body: { ids?: unknown; archived?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+  const { ids, archived } = body;
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string") || typeof archived !== "boolean") {
+    return json({ error: "expected { ids: string[], archived: boolean }" }, 400);
+  }
+  if (ids.length > MAX_ARCHIVE_IDS) return json({ error: `at most ${MAX_ARCHIVE_IDS} ids` }, 400);
+  if (!ids.length) return json({ updated: 0 });
+
+  // One query regardless of count (ids go in as a JSON array); rows already in
+  // the requested state aren't rewritten. Re-archiving keeps the original time.
+  const result = await db
+    .prepare(
+      `UPDATE listings SET archived_at = CASE WHEN ?2 THEN ?3 ELSE NULL END
+       WHERE id IN (SELECT value FROM json_each(?1))
+         AND (archived_at IS NULL) = ?2`,
+    )
+    .bind(JSON.stringify(ids), archived ? 1 : 0, new Date().toISOString())
+    .run();
+  return json({ updated: result.meta.changes ?? 0 });
 }
 
 /**
@@ -55,6 +87,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
  *   remote=1  remote-friendly only
  *   location  substring of any location
  *   status    open (default) | closed | all
+ *   view      inbox (default, not archived) | archived | all
  *   posted    only roles published in the last N days
  *   seen      only roles first seen in the last N days
  *   sort      seen (default) | posted
@@ -91,6 +124,10 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
   if (status === "open") where.push("l.closed_at IS NULL");
   else if (status === "closed") where.push("l.closed_at IS NOT NULL");
 
+  const view = p.get("view") ?? "inbox";
+  if (view === "inbox") where.push("l.archived_at IS NULL");
+  else if (view === "archived") where.push("l.archived_at IS NOT NULL");
+
   const daysAgo = (k: string) => {
     const n = Number(p.get(k));
     return n > 0 ? new Date(Date.now() - n * 86_400_000).toISOString() : null;
@@ -109,7 +146,7 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
   const sql = `
     SELECT l.id, l.company_key, c.name AS company, c.category, l.title, l.department, l.team,
            l.location, l.locations, l.remote, l.workplace, l.employment, l.compensation, l.url,
-           l.published_at, l.first_seen_at, l.closed_at,
+           l.published_at, l.first_seen_at, l.closed_at, l.archived_at,
            count(*) OVER () AS total
     FROM listings l JOIN companies c ON c.key = l.company_key
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
