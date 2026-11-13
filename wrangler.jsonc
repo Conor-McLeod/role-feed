@@ -4,6 +4,13 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-30",
 
+  // Only reachable through the custom domain, which sits behind Cloudflare
+  // Access. Keep workers.dev and preview URLs off so a deploy can't reopen
+  // an unprotected hostname.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "role-feed.conormcleod.com", "custom_domain": true }],
+
   // Static feed UI. API routes go to the Worker first.
   "assets": {
     "directory": "./public",

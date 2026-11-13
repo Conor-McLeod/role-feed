@@ -35,11 +35,13 @@ npx wrangler queues create role-feed-fetch
 npx wrangler queues create role-feed-dlq
 npx wrangler deploy              # creates the D1 database on first deploy
 pnpm db:migrate:remote
-curl -X POST https://role-feed.<your-subdomain>.workers.dev/api/refresh   # first fill
 ```
 
-Then put it behind Cloudflare Access (Zero Trust → Access → Applications → Self-hosted, for the
-workers.dev hostname). Without that, anyone with the URL can read the feed and trigger `/api/refresh`.
+The Worker is served only on the custom domain in `wrangler.jsonc` (`routes`); `workers_dev` and
+`preview_urls` are off, so there's no unprotected `*.workers.dev` hostname. Put that domain behind
+Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). Without that, anyone with the
+URL can read the feed and trigger `/api/refresh`. Then sign in and press "Refresh now" for the first
+fill (or wait for the daily cron).
 
 ## Adding a company
 
