@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CATEGORY_LABELS, healthProblem } from "../lib/companies";
+  import { categoryLabel, healthProblem } from "../lib/companies";
   import type { Filters } from "../lib/filters";
   import type { Company } from "../lib/types";
 
@@ -71,7 +71,7 @@
           aria-pressed={filters.categories.includes(cat)}
           onclick={() => (filters.categories = toggled(filters.categories, cat))}
         >
-          {CATEGORY_LABELS[cat] ?? cat}
+          {categoryLabel(cat)}
         </button>
       </li>
     {/each}
@@ -83,7 +83,7 @@
   </p>
   <ul class="companies">
     {#each groups as g (g.category)}
-      <h4>{CATEGORY_LABELS[g.category] ?? g.category}</h4>
+      <h4>{categoryLabel(g.category)}</h4>
       {#each g.companies as c (c.key)}
         {@const problem = healthProblem(c)}
         <li>

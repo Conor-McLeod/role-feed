@@ -1,4 +1,5 @@
-export type Ats = "ashby" | "greenhouse" | "gem" | "lever";
+export const ATS = ["ashby", "greenhouse", "gem", "lever"] as const;
+export type Ats = (typeof ATS)[number];
 
 export interface Company {
   category: string;

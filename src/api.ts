@@ -1,7 +1,10 @@
 // JSON API for the feed UI.
 
 import { companyHealth, type CompanyStatus } from "./health";
-import { BY_KEY, enqueueAll } from "./poll";
+import { enqueueAll } from "./poll";
+import { probeBoard } from "./sources";
+import { addCompany, setEnabled } from "./store";
+import { ATS, companyKey, type Ats, type Company, type FetchMessage } from "./types";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -26,13 +29,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     return row ? json(row) : json({ error: "not found" }, 404);
   }
 
-  if (req.method === "GET" && path === "/api/companies") {
-    const { results } = await env.DB.prepare("SELECT * FROM companies ORDER BY category, name").all<
-      CompanyStatus & { key: string }
-    >();
-    const now = Date.now();
-    // health is null for companies no longer in companies.json (not polled any more).
-    return json(results.map((c) => ({ ...c, health: BY_KEY.has(c.key) ? companyHealth(c, now) : null })));
+  if (req.method === "GET" && path === "/api/companies") return json(await listCompanies(env.DB));
+
+  // Add a company. Body: { name, category, ats, slug }.
+  if (req.method === "POST" && path === "/api/companies") return createCompany(env, req);
+
+  // Pause or resume polling. Body: { enabled: boolean }.
+  if (req.method === "PATCH" && path.startsWith("/api/companies/")) {
+    return updateCompany(env, req, decodeURIComponent(path.slice("/api/companies/".length)));
   }
 
   // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
@@ -46,6 +50,89 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   }
 
   return json({ error: "not found" }, 404);
+}
+
+async function listCompanies(db: D1Database, key?: string) {
+  const { results } = await db
+    .prepare(`SELECT * FROM companies ${key ? "WHERE key = ?1" : ""} ORDER BY category, name`)
+    .bind(...(key ? [key] : []))
+    .all<CompanyStatus & { key: string; enabled: number }>();
+  const now = Date.now();
+  // health is null for paused companies (not polled).
+  return results.map((c) => ({ ...c, enabled: !!c.enabled, health: c.enabled ? companyHealth(c, now) : null }));
+}
+
+async function readJson(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+const ATS_NAMES: Record<Ats, string> = { ashby: "Ashby", greenhouse: "Greenhouse", gem: "Gem", lever: "Lever" };
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const CATEGORY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+async function createCompany(env: Env, req: Request): Promise<Response> {
+  const body = await readJson(req);
+  if (!body) return json({ error: "invalid JSON" }, 400);
+  const ats = str(body.ats) as Ats;
+  const company: Company = {
+    name: str(body.name),
+    // "Inference Silicon" -> "inference-silicon", matching the existing keys.
+    category: str(body.category).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+    ats,
+    slug: str(body.slug),
+  };
+  if (!ATS.includes(ats)) return json({ error: `Job board must be one of ${ATS.join(", ")}` }, 400);
+  if (!SLUG.test(company.slug)) return json({ error: "Board slug should be the last part of the job board URL, e.g. baseten" }, 400);
+  if (!company.name || company.name.length > 100) return json({ error: "Name is required (at most 100 characters)" }, 400);
+  if (!CATEGORY.test(company.category) || company.category.length > 50) return json({ error: "Category is required" }, 400);
+
+  const key = companyKey(company);
+  const existing = await env.DB.prepare("SELECT name, enabled FROM companies WHERE key = ?1")
+    .bind(key)
+    .first<{ name: string; enabled: number }>();
+  if (existing) {
+    const state = existing.enabled ? "already being polled" : "already in the list but paused; resume it there";
+    return json({ error: `${existing.name} (${key}) is ${state}` }, 409);
+  }
+
+  // Catch a mistyped slug now rather than as a failed poll tomorrow.
+  let probe: { ok: boolean; status: number };
+  try {
+    probe = await probeBoard(company);
+  } catch (err) {
+    return json({ error: `Couldn't reach the ${ATS_NAMES[ats]} API: ${err instanceof Error ? err.message : err}` }, 502);
+  }
+  if (!probe.ok) {
+    const why = probe.status === 404 ? "no such board" : `HTTP ${probe.status}`;
+    return json({ error: `No ${ATS_NAMES[ats]} job board found at "${company.slug}" (${why})` }, 422);
+  }
+
+  if (!(await addCompany(env.DB, company, new Date().toISOString()))) {
+    return json({ error: `${key} already exists` }, 409);
+  }
+  // First poll right away instead of waiting for tomorrow's cron.
+  await env.FETCH_QUEUE.send({ key } satisfies FetchMessage);
+  console.log({ event: "company_added", company: key });
+  const [row] = await listCompanies(env.DB, key);
+  return json(row, 201);
+}
+
+async function updateCompany(env: Env, req: Request, key: string): Promise<Response> {
+  const body = await readJson(req);
+  if (typeof body?.enabled !== "boolean") return json({ error: "expected { enabled: boolean }" }, 400);
+  const { enabled } = body;
+  if (!(await setEnabled(env.DB, key, enabled))) return json({ error: "not found" }, 404);
+  // Resumed: catch up now rather than at the next cron.
+  if (enabled) await env.FETCH_QUEUE.send({ key } satisfies FetchMessage);
+  console.log({ event: enabled ? "company_resumed" : "company_paused", company: key });
+  const [row] = await listCompanies(env.DB, key);
+  return json(row);
 }
 
 const MAX_ARCHIVE_IDS = 2000; // matches the listings limit, so "archive all shown" fits
@@ -82,7 +169,7 @@ async function archive(db: D1Database, req: Request): Promise<Response> {
  *   q         space-separated terms, all must match (title, company, team, department, location)
  *   desc=1    also match q against the description
  *   exclude   comma-separated terms; drop titles containing any of them
- *   company   comma-separated company keys
+ *   company   comma-separated company keys (listings of paused companies are never returned)
  *   category  comma-separated categories
  *   remote=1  remote-friendly only
  *   location  substring of any location
@@ -94,7 +181,7 @@ async function archive(db: D1Database, req: Request): Promise<Response> {
  *   limit     default 500, max 2000
  */
 async function listListings(db: D1Database, p: URLSearchParams): Promise<Response> {
-  const where: string[] = [];
+  const where: string[] = ["c.enabled = 1"];
   const args: unknown[] = [];
   const arg = (v: unknown) => {
     args.push(v);
@@ -149,7 +236,7 @@ async function listListings(db: D1Database, p: URLSearchParams): Promise<Respons
            l.published_at, l.first_seen_at, l.closed_at, l.archived_at,
            count(*) OVER () AS total
     FROM listings l JOIN companies c ON c.key = l.company_key
-    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    WHERE ${where.join(" AND ")}
     ORDER BY ${order}
     LIMIT ${limit}`;
 

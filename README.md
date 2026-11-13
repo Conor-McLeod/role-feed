@@ -5,8 +5,9 @@ Cloudflare Worker + Cron + Queues + D1, with a Svelte UI built by Vite.
 
 ## How it works
 
-- `src/companies.json` lists companies by job board (`ashby`, `greenhouse`, `gem`, `lever`) and board slug.
-- A cron (`0 12 * * *`, 12:00 UTC) queues one message per company.
+- The `companies` table in D1 lists companies by job board (`ashby`, `greenhouse`, `gem`, `lever`) and
+  board slug. It's managed from the Companies page in the UI (see [Managing companies](#managing-companies)).
+- A cron (`0 12 * * *`, 12:00 UTC) queues one message per enabled company.
 - The queue consumer handles one company per invocation: fetch the public job board API, normalise
   (`src/sources.ts`), upsert into D1, mark anything no longer listed as closed (`src/store.ts`).
   Unchanged listings aren't rewritten.
@@ -51,8 +52,16 @@ Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). With
 URL can read the feed and trigger `/api/refresh`. Then sign in and press "Refresh now" for the first
 fill (or wait for the daily cron).
 
-## Adding a company
+## Managing companies
 
-Find the board slug in the careers page URL (`jobs.ashbyhq.com/<slug>`,
-`job-boards.greenhouse.io/<slug>`, `jobs.gem.com/<slug>`, `jobs.lever.co/<slug>`), add an entry to
-`src/companies.json`, and deploy.
+Open the **Companies** page (`/#companies`):
+
+- **Add a company**: paste its careers page link (`jobs.ashbyhq.com/<slug>`, `job-boards.greenhouse.io/<slug>`,
+  `jobs.gem.com/<slug>`, `jobs.lever.co/<slug>`) to fill in the job board and slug, then give it a name and
+  category. The Worker checks the board exists before saving (a mistyped slug is rejected) and queues its
+  first poll straight away.
+- **Pause / resume**: the switch on each row. A paused company isn't polled and its roles are left out of
+  the feed, but the company and its listings stay in D1. Resuming polls it immediately.
+
+API: `POST /api/companies` with `{ name, category, ats, slug }`; `PATCH /api/companies/<ats>:<slug>` with
+`{ enabled }`. The list used to live in `src/companies.json`; migration `0003` seeded the table from it.

@@ -12,20 +12,33 @@ const LISTING_COLS = [
   "employment", "compensation", "url", "published_at", "description",
 ] as const;
 
-export async function syncCompanies(db: D1Database, companies: Company[]) {
-  const rows = JSON.stringify(companies.map((c) => ({ ...c, key: companyKey(c) })));
-  await db
+/** A company row, or null if there's no such company. */
+export async function getCompany(db: D1Database, key: string) {
+  return db
+    .prepare("SELECT name, category, ats, slug, enabled FROM companies WHERE key = ?1")
+    .bind(key)
+    .first<Company & { enabled: number }>();
+}
+
+/** Insert a new company. Returns false if one with the same key already exists. */
+export async function addCompany(db: D1Database, c: Company, now: string): Promise<boolean> {
+  const result = await db
     .prepare(
-      `INSERT INTO companies (key, name, category, ats, slug)
-       SELECT json_extract(value, '$.key'), json_extract(value, '$.name'),
-              json_extract(value, '$.category'), json_extract(value, '$.ats'),
-              json_extract(value, '$.slug')
-       FROM json_each(?1) WHERE true
-       ON CONFLICT (key) DO UPDATE SET name = excluded.name, category = excluded.category
-       WHERE companies.name IS NOT excluded.name OR companies.category IS NOT excluded.category`,
+      `INSERT INTO companies (key, name, category, ats, slug, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+       ON CONFLICT (key) DO NOTHING`,
     )
-    .bind(rows)
+    .bind(companyKey(c), c.name, c.category, c.ats, c.slug, now)
     .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/** Pause or resume polling. Returns false if there's no such company. */
+export async function setEnabled(db: D1Database, key: string, enabled: boolean): Promise<boolean> {
+  const row = await db
+    .prepare("UPDATE companies SET enabled = ?2 WHERE key = ?1 RETURNING key")
+    .bind(key, enabled ? 1 : 0)
+    .first();
+  return row != null;
 }
 
 /**

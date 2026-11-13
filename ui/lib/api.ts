@@ -1,9 +1,20 @@
-import type { Company, Listing, ListingDetail } from "./types";
+import type { Company, Listing, ListingDetail, NewCompany } from "./types";
+
+// Throws with the API's error message, or the HTTP status if there isn't one.
+async function send<T>(method: string, url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+  return data as T;
+}
 
 const get = async <T>(url: string): Promise<T> => (await fetch(url)).json();
 
 export const api = {
   companies: () => get<Company[]>("/api/companies"),
+  addCompany: (c: NewCompany) => send<Company>("POST", "/api/companies", c),
+  setCompanyEnabled: (key: string, enabled: boolean) =>
+    send<Company>("PATCH", `/api/companies/${encodeURIComponent(key)}`, { enabled }),
   listings: (query: string) => get<{ total: number; listings: Listing[] }>(`/api/listings?${query}`),
   listing: (id: string) => get<ListingDetail>(`/api/listings/${encodeURIComponent(id)}`),
   refresh: async (): Promise<{ queued: number }> => (await fetch("/api/refresh", { method: "POST" })).json(),
