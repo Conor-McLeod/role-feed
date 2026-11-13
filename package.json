@@ -3,15 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --test-scheduled",
-    "deploy": "wrangler deploy",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite build && vite preview",
+    "deploy": "vite build && wrangler deploy",
     "types": "wrangler types",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit && svelte-check --tsconfig ./ui/tsconfig.json",
     "db:migrate:local": "wrangler d1 migrations apply role-feed --local",
     "db:migrate:remote": "wrangler d1 migrations apply role-feed --remote"
   },
   "devDependencies": {
-    "typescript": "^7.0.2",
-    "wrangler": "^4.156.0"
+    "@cloudflare/vite-plugin": "^1.67.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@typescript/native": "npm:typescript@7",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.6",
+    "wrangler": "4.158.0"
   }
 }

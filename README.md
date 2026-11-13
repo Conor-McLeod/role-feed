@@ -1,7 +1,7 @@
 # role-feed
 
 A daily feed of open roles at AI inference / infrastructure companies.
-Cloudflare Worker + Cron + Queues + D1, with a static UI.
+Cloudflare Worker + Cron + Queues + D1, with a Svelte UI built by Vite.
 
 ## How it works
 
@@ -16,16 +16,24 @@ Cloudflare Worker + Cron + Queues + D1, with a static UI.
   the daily cron logs a `company_unhealthy` warning for each. Logs are structured objects (`event:
   "poll"` carries per-company write counts, response size and fetch time), so they can be filtered
   in Workers Logs.
-- `/api/*` serves the feed; `public/` is the UI. "New" is relative to your last visit (localStorage).
+- `/api/*` serves the feed. The UI is a Svelte 5 app in `ui/` (entry `index.html`), built by Vite
+  and served as static assets. "New" is relative to your last visit (localStorage).
+- One Vite dev server runs both: `@cloudflare/vite-plugin` runs the Worker from `wrangler.jsonc` in
+  workerd with local D1 and Queues. `vite build` writes `dist/` plus a generated `wrangler.json`,
+  which `wrangler deploy` picks up automatically (via `.wrangler/deploy/config.json`).
 
 ## Develop
 
 ```bash
 pnpm install
 pnpm db:migrate:local
-pnpm dev                                   # http://localhost:8787
-curl "http://localhost:8787/__scheduled"   # run the daily poll now
+pnpm dev                                                 # http://localhost:8787
+curl "http://localhost:8787/cdn-cgi/handler/scheduled"   # run the daily poll now
+pnpm typecheck                                           # Worker (tsc 7) + UI (svelte-check)
 ```
+
+`svelte-check` needs TypeScript 6, so `typescript` is pinned to 6 and TypeScript 7 is installed as
+`@typescript/native`, which the Worker check calls directly.
 
 ## Deploy
 
@@ -33,7 +41,7 @@ curl "http://localhost:8787/__scheduled"   # run the daily poll now
 npx wrangler login
 npx wrangler queues create role-feed-fetch
 npx wrangler queues create role-feed-dlq
-npx wrangler deploy              # creates the D1 database on first deploy
+pnpm run deploy                  # vite build + wrangler deploy; creates D1 on first deploy
 pnpm db:migrate:remote
 ```
 
