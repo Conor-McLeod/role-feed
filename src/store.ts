@@ -20,11 +20,16 @@ export async function getCompany(db: D1Database, key: string) {
     .first<Company & { enabled: number }>();
 }
 
-/** Insert a new company. Returns false if one with the same key already exists. */
+/**
+ * Insert a new company. Returns false if one with the same key already exists,
+ * ignoring case (board slugs are case-insensitive).
+ */
 export async function addCompany(db: D1Database, c: Company, now: string): Promise<boolean> {
   const result = await db
     .prepare(
-      `INSERT INTO companies (key, name, category, ats, slug, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+      `INSERT INTO companies (key, name, category, ats, slug, added_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6
+       WHERE NOT EXISTS (SELECT 1 FROM companies WHERE key = ?1 COLLATE NOCASE)
        ON CONFLICT (key) DO NOTHING`,
     )
     .bind(companyKey(c), c.name, c.category, c.ats, c.slug, now)

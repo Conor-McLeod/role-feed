@@ -16,10 +16,19 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // Writes must be JSON. Another site can only send a cross-site request with
+  // the Access cookie and no CORS preflight if it uses a form content type, so
+  // this check stops other sites from writing here.
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const type = req.headers.get("Content-Type")?.toLowerCase() ?? "";
+    if (!type.startsWith("application/json")) return json({ error: "expected Content-Type: application/json" }, 415);
+  }
+
   if (req.method === "GET" && path === "/api/listings") return listListings(env.DB, url.searchParams);
 
   if (req.method === "GET" && path.startsWith("/api/listings/")) {
-    const id = decodeURIComponent(path.slice("/api/listings/".length));
+    const id = decodePath(path.slice("/api/listings/".length));
+    if (id == null) return json({ error: "not found" }, 404);
     const row = await env.DB.prepare(
       `SELECT l.*, c.name AS company, c.category FROM listings l
        JOIN companies c ON c.key = l.company_key WHERE l.id = ?1`,
@@ -36,7 +45,8 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 
   // Pause or resume polling. Body: { enabled: boolean }.
   if (req.method === "PATCH" && path.startsWith("/api/companies/")) {
-    return updateCompany(env, req, decodeURIComponent(path.slice("/api/companies/".length)));
+    const key = decodePath(path.slice("/api/companies/".length));
+    return key == null ? json({ error: "not found" }, 404) : updateCompany(env, req, key);
   }
 
   // Archive or unarchive listings. Body: { ids: string[], archived: boolean }.
@@ -60,6 +70,15 @@ async function listCompanies(db: D1Database, key?: string) {
   const now = Date.now();
   // health is null for paused companies (not polled).
   return results.map((c) => ({ ...c, enabled: !!c.enabled, health: c.enabled ? companyHealth(c, now) : null }));
+}
+
+/** decodeURIComponent, or null for a malformed escape like "%zz". */
+function decodePath(s: string): string | null {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return null;
+  }
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown> | null> {
@@ -93,12 +112,13 @@ async function createCompany(env: Env, req: Request): Promise<Response> {
   if (!CATEGORY.test(company.category) || company.category.length > 50) return json({ error: "Category is required" }, 400);
 
   const key = companyKey(company);
-  const existing = await env.DB.prepare("SELECT name, enabled FROM companies WHERE key = ?1")
+  // Board slugs are case-insensitive, so "Baseten" is the same board as "baseten".
+  const existing = await env.DB.prepare("SELECT key, name, enabled FROM companies WHERE key = ?1 COLLATE NOCASE")
     .bind(key)
-    .first<{ name: string; enabled: number }>();
+    .first<{ key: string; name: string; enabled: number }>();
   if (existing) {
     const state = existing.enabled ? "already being polled" : "already in the list but paused; resume it there";
-    return json({ error: `${existing.name} (${key}) is ${state}` }, 409);
+    return json({ error: `${existing.name} (${existing.key}) is ${state}` }, 409);
   }
 
   // Catch a mistyped slug now rather than as a failed poll tomorrow.

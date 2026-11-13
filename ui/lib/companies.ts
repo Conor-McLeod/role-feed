@@ -64,7 +64,12 @@ export function parseBoardUrl(input: string): { ats: keyof typeof ATS_LABELS; sl
   ];
   for (const [ats, re] of patterns) {
     const m = input.match(re);
-    if (m) return { ats, slug: decodeURIComponent(m[1]) };
+    if (!m) continue;
+    try {
+      return { ats, slug: decodeURIComponent(m[1]) };
+    } catch {
+      return null; // malformed escape, e.g. "acme%"
+    }
   }
   return null;
 }

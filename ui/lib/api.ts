@@ -17,7 +17,7 @@ export const api = {
     send<Company>("PATCH", `/api/companies/${encodeURIComponent(key)}`, { enabled }),
   listings: (query: string) => get<{ total: number; listings: Listing[] }>(`/api/listings?${query}`),
   listing: (id: string) => get<ListingDetail>(`/api/listings/${encodeURIComponent(id)}`),
-  refresh: async (): Promise<{ queued: number }> => (await fetch("/api/refresh", { method: "POST" })).json(),
+  refresh: async (): Promise<{ queued: number }> => (await fetch("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" } })).json(),
   // Throws on failure, including an expired Access session (the 302 to the
   // Access login is cross-origin, so fetch rejects).
   archive: async (ids: string[], archived: boolean): Promise<{ updated: number }> => {

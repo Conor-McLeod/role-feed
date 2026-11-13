@@ -46,6 +46,10 @@ pnpm run deploy                  # vite build + wrangler deploy; creates D1 on f
 pnpm db:migrate:remote
 ```
 
+That order is only for the first deploy, when D1 doesn't exist until `wrangler deploy` creates it. After
+that, run `pnpm db:migrate:remote` **before** `pnpm run deploy`: new code can depend on new columns (e.g.
+`companies.enabled` from `0003`), and every endpoint, the cron and the queue consumer fail until they exist.
+
 The Worker is served only on the custom domain in `wrangler.jsonc` (`routes`); `workers_dev` and
 `preview_urls` are off, so there's no unprotected `*.workers.dev` hostname. Put that domain behind
 Cloudflare Access (Zero Trust → Access → Applications → Self-hosted). Without that, anyone with the
