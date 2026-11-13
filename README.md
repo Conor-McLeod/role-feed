@@ -65,7 +65,7 @@ Setup:
 2. Open the Jobs database → ••• → Connections → add the integration.
 3. `npx wrangler secret put NOTION_TOKEN` (and for local dev, copy `.dev.vars.example` to
    `.dev.vars` and fill it in).
-4. `pnpm db:migrate:remote` for the `notion_url` column.
+4. `pnpm db:migrate:remote` for the `notion_url` and `notion_claimed_at` columns.
 
 The data source ID and property names are `vars` in `wrangler.jsonc`. Without a token the button
 reports "Notion isn't configured".

@@ -57,8 +57,15 @@ async function notion<T>(cfg: NotionConfig, method: string, path: string, body?:
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { message?: string };
-  if (!res.ok) throw new NotionError(res.status, `Notion ${res.status}: ${data.message ?? res.statusText}`);
+  let data: { message?: string } | null = null;
+  try {
+    data = await res.json();
+  } catch {
+    // Fall through: an error status still reports below; a success without a
+    // readable body would otherwise hand callers an empty page.
+  }
+  if (!res.ok) throw new NotionError(res.status, `Notion ${res.status}: ${data?.message ?? res.statusText}`);
+  if (!data || typeof data !== "object") throw new NotionError(res.status, `Notion ${res.status}: unreadable response`);
   return data as T;
 }
 
@@ -88,10 +95,17 @@ export async function createJobPage(cfg: NotionConfig, job: NotionJob): Promise<
     children: blocks.slice(0, MAX_BLOCKS_PER_REQUEST),
   });
   // Long descriptions: the rest goes on in batches of 100.
-  for (let i = MAX_BLOCKS_PER_REQUEST; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
-    await notion(cfg, "PATCH", `/blocks/${page.id}/children`, {
-      children: blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST),
-    });
+  try {
+    for (let i = MAX_BLOCKS_PER_REQUEST; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
+      await notion(cfg, "PATCH", `/blocks/${page.id}/children`, {
+        children: blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST),
+      });
+    }
+  } catch (err) {
+    // Trash the half-written page, or the retry's findJobPage would link it
+    // as if it were complete.
+    await notion(cfg, "PATCH", `/pages/${page.id}`, { in_trash: true }).catch(() => {});
+    throw err;
   }
   return page;
 }
@@ -102,7 +116,13 @@ type Block = { object: "block"; type: string } & Record<string, unknown>;
 
 function richText(s: string) {
   const out = [];
-  for (let i = 0; i < s.length; i += MAX_TEXT) out.push({ type: "text", text: { content: s.slice(i, i + MAX_TEXT) } });
+  for (let i = 0; i < s.length; ) {
+    let end = Math.min(i + MAX_TEXT, s.length);
+    // Don't split a surrogate pair (emoji etc.) across two items.
+    if (end < s.length && /[\uD800-\uDBFF]/.test(s[end - 1])) end--;
+    out.push({ type: "text", text: { content: s.slice(i, end) } });
+    i = end;
+  }
   return out;
 }
 
@@ -110,8 +130,9 @@ const block = (type: string, text: string): Block => ({ object: "block", type, [
 
 /**
  * Descriptions are plain text (see sources.ts): blank lines separate
- * paragraphs and list items start with "• ". Short lines ending without
- * punctuation that open a paragraph are treated as headings.
+ * paragraphs and list items start with "• ". A short line that opens a
+ * paragraph and is followed by a bullet ("Requirements:" then "• ...") is
+ * treated as a heading.
  */
 export function descriptionBlocks(description: string | null): Block[] {
   if (!description?.trim()) return [block("paragraph", "No description provided.")];
@@ -124,12 +145,12 @@ export function descriptionBlocks(description: string | null): Block[] {
       text = [];
     };
     lines.forEach((line, i) => {
-      const bullet = line.match(/^[•\-*·]\s+(.*)$/);
+      const bullet = line.match(BULLET);
       if (bullet) {
         flush();
         blocks.push(block("bulleted_list_item", bullet[1]));
-      } else if (i === 0 && lines.length > 1 && isHeading(line)) {
-        blocks.push(block("heading_3", line));
+      } else if (i === 0 && BULLET.test(lines[1] ?? "") && isHeading(line)) {
+        blocks.push(block("heading_3", line.replace(/:$/, "")));
       } else {
         text.push(line);
       }
@@ -139,4 +160,5 @@ export function descriptionBlocks(description: string | null): Block[] {
   return blocks;
 }
 
-const isHeading = (line: string) => line.length <= 60 && !/[.,;:!?)]$/.test(line);
+const BULLET = /^[•\-*·]\s+(.*)$/;
+const isHeading = (line: string) => line.length <= 60 && !/[.,;!?)]$/.test(line);
